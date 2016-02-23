@@ -7,23 +7,25 @@
 
 using namespace std;
 
-/*class SLAU
+class SLAU
 {
 public:
-	SLAU(arguments);
+	SLAU(unsigned int N) {
+
+	}
 	~SLAU();
 
-};*/
+
+};
 
 class inputUnsInt
 {
 public:
 	inputUnsInt();
 	~inputUnsInt();
-
+	
 	static unsigned int inputUnsIntCheck () {
 	unsigned int size = 0;
-	// Ввод числа с проверкой
 	std::ios::iostate state;
     do {
 		int temp; 
@@ -44,14 +46,25 @@ public:
 		size = temp;
 	} while (state != std::ios::goodbit);
     std::cout << "Вы ввели: " << size << endl;
-
     return size; 
 	};	
 };
+
+
 int main(int argc, char **argv)
 {
-	unsigned int size = inputUnsInt::inputUnsIntCheck(); 
 	
+
+	unsigned int start_time =  clock(); // начальное время
+    
+	/*somecode*/
+
+	unsigned int size = inputUnsInt::inputUnsIntCheck(); 
+
+    unsigned int end_time = clock(); // конечное время
+    unsigned int search_time = end_time - start_time; // искомое время
+	
+    cout << "Время выполнения скрипта: " << search_time << "мс." << endl; 
 
 	return 0;
 }
