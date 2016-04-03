@@ -1,53 +1,29 @@
 //clear; g++ -pthread -Wl,--no-as-needed -std=c++11 -Wall -o main main1.cpp
+//clear; valgrind --tool=helgrind --history-level=approx ./main
+//valgrind -v --leak-check=full --show-leak-kinds=all ./main
+
+// g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main.cpp; valgrind --tool=helgrind --history-level=approx ./main
+
+// g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main.cpp; 
 
 
 #include <iostream>
-//#include <pthread.h>
+#include <pthread.h>
 #include <thread>
 #include <mutex>
-#include <cstdlib>
-#include <ctime>
 #include <vector>
 #include <fstream>
 #include <iomanip>
-#include <atomic>
-#include <condition_variable>
+#include <cmath>
+
+#include <boost/thread/thread.hpp>
+#include <boost/thread/barrier.hpp>
 
 using namespace std;
 
-class barrier {
-	const unsigned int threadCount;
-	std::atomic<unsigned int>threadsWaiting; 
-	bool isNotWaiting;
-	std::condition_variable waitVariable;
-	std::mutex mutex;
-
-public:
-	barrier(unsigned int n) : threadCount(n) {
-		threadsWaiting = 0;
-  		isNotWaiting = false;
-	}
-
-	barrier(const barrier &) = delete;
- 	
- 	void wait() {
-  		if (threadsWaiting.fetch_add(1) >= threadCount - 1) {
-			isNotWaiting = true;
-   			waitVariable.notify_all();
-   			threadsWaiting.store(0);
- 		} else {
-  			std::unique_lock<std::mutex> lock(mutex);
-  			waitVariable.wait(lock,[&]{ return isNotWaiting;});
- 		}
-	}
-};
-
-barrier *rowBarrier; 
-mutex coutMutex; 
-
-
+mutex coutMutex;
 double **_arraySlau;
-int _size;
+int _size, MAX_THREAD;
 
 
 double randDouble (double fMin, double fMax) {
@@ -91,15 +67,9 @@ void writeToFile (double **arraySlau, int size) {
 vector<double> getAnswers (double **arraySlau, int size) {
 
 	cout << "Метод Гауса - без thread:" << endl; 
-	/*double arr[size][size + 1]; 
 
-	for (int i = 0; i < size; i++) { 
-		for (int j = 0; j < size + 1; j++) {
-			arr[i][j] = arraySlau[i][j];
-			//cout << arr[i][j] << " "; 
-		} 
-		//cout << endl; 
-	}*/
+	double start_time =  clock() / (CLOCKS_PER_SEC / 100);
+
 	double **arr;
 	arr = new double*[size];  
 	for (int i = 0; i < size; i++) { 
@@ -109,181 +79,154 @@ vector<double> getAnswers (double **arraySlau, int size) {
 		}  
 	}
 
-	unsigned int start_time =  clock();
 	double m;
-	double x[size];
 
-	for (int i = 0; i < size; i++) {
-        x[i] = arr[i][size];
-    }
-    
     // прямой ход - исключение неизвестных
     for (int k = 1; k < size; k++) {
  		for (int j = k; j < size; j++) {
  			m = arr[j][k - 1] / arr[k - 1][k - 1];
- 			//cout << m << endl;
- 			for (int i = 0; i < size; i++) {
+ 			for (int i = 0; i < size + 1; i++) {
  				arr[j][i] = arr[j][i] - m * arr[k - 1][i];	
  			}
-        	x[j] = x[j] - m * x[k - 1];
  		}
- 		//printArr(arr, size);
  	}
 
+ 	double *x = new double[size];
  	// обратный ход - подставляем и считаем
  	for (int i = size - 1; i >= 0; i--) {
+ 		x[i] = arr[i][size];
  		for (int j = i + 1; j < size; j++) x[i] -= arr[i][j] * x[j];
  		x[i] = x[i] / arr[i][i];
  	}
-
- 	unsigned int end_time = clock();
-
-	vector<double> _answers;	
-	for (int i = 0; i < size; ++i) _answers.push_back(x[i]); 
-
 	
-    unsigned int search_time = end_time - start_time; 
+ 	//printArr(arr, size);
+ 	
+	vector<double> _answers;	
+	for (int i = 0; i < size; ++i) 
+		_answers.push_back(x[i]); 
+	
+	double end_time = clock() / (CLOCKS_PER_SEC / 100);
+    double search_time = end_time - start_time; 
 	
     cout << "Время = " << search_time << "мс." << endl; 
 
+    for (int i = 0; i < size; ++i)
+    	delete[] arr[i]; 
+    delete[] arr; 
+    delete[] x;
+	
 	return _answers;  
 }
 
-void threadCalculateString (double **arr, double *x, int size, int k, int j) {
-	//rowBarrier->wait();
-	double m = arr[j][k - 1] / arr[k - 1][k - 1];
-	//cout << m << endl;
- 	for (int i = 0; i < size; i++) {
- 		//rowBarrier->wait();
-
- 		/*coutMutex.lock();*/ arr[j][i] = arr[j][i] - m * arr[k - 1][i];/*coutMutex.unlock();*/
- 		// coutMutex.lock();cout << "1" << endl;coutMutex.unlock();
- 		//rowBarrier->wait(); 	
- 		// coutMutex.lock();cout << "2" << endl; coutMutex.unlock();
- 	}
-    /*coutMutex.lock();*/ x[j] = x[j] - m * x[k - 1]; /*coutMutex.unlock();*/
-    //rowBarrier->wait();
-	return; 
+void threadCalculateString (double **arr, int size, int start, int end, boost::barrier& cur_barier) {
+	double m;
+	for (int k = 1; k < size; ++k) {	
+		for (int j = k; j < end; ++j) {	
+			if ((j >= start) && (j < end)) {
+				m = arr[j][k - 1] / arr[k - 1][k - 1];
+ 				for (int i = 0; i < size + 1; ++i)
+ 					arr[j][i] = arr[j][i] - m * arr[k - 1][i];
+			}
+		}
+ 		cur_barier.wait();
+	}
 }
 
-vector<double> getAnswersThread (double **arraySlau, int size) {
+vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
 
 	cout << "Метод Гауса - с использованием thread:" << endl; 
-	cout << "Всего доступно одновременно - " << std::thread::hardware_concurrency() << " потока"<< endl;   
 	
-	double **arr;
-	arr = new double*[size];  
+	double start_time =  clock() / (CLOCKS_PER_SEC / 100);
+
+	double **arr = new double*[size];  
 	for (int i = 0; i < size; i++) { 
 		arr[i] = new double[size + 1]; 
 		for (int j = 0; j < size + 1; j++) {
 			arr[i][j] = arraySlau[i][j];
 		}  
 	}
-
-	unsigned int start_time =  clock();
-	
-	double *x = new double[size];
-	for (int i = 0; i < size; i++) {
-        x[i] = arr[i][size];
-    }
-    
     vector<thread> threads;
-    //thread threads[size];
-	// прямой ход - исключение неизвестных
-    /*for (int k = 1; k < size; k++) {
-    	cout << "Запускаем поток №" << k << endl; 
- 		thread thr(threadCalculateString, ref(arr), ref(x), size, k);
- 		threads[k - 1] = move(thr); 	
- 	}*/
+    boost::barrier bar(MAX_THREAD), phase1(MAX_THREAD);
 
- 	for (int k = 1; k < size; ++k) {
- 		//rowBarrier = new barrier((unsigned int) size - k);
- 		for (int j = k; j < size; ++j) {
- 			//cout << "Запускаем поток №" << j << endl; 
- 			thread thr(threadCalculateString, ref(arr), ref(x), size, k, j);
- 			//threads[j - k] = move(thr);
-			threads.push_back(move(thr));  		
- 		}
+    int temp = size / (MAX_THREAD - 1);  
 
- 		try {
-        	//for (int i = 0; i < size - k; ++i) threads[i].join();
-        	/*for (std::vector<thread>::iterator i = threads.begin(); i != threads.end(); ++i)
-        	{
-        		i->join(); 
-        	}*/
-        	for (auto& t : threads) {
-  		
-    			if (t.joinable())
-      				t.join();
-      		}
-    	} catch(const std::system_error& e) {
-        	std::cout << "Caught system_error with code in thread " << e.code() 
-              		  << " meaning " << e.what() << '\n';
-    	}
-        //printArr(arr, size);
-    	delete rowBarrier;
+ 	for (int i = 0; i < (MAX_THREAD - 1); ++i) {
+    	int start = temp * i, end = temp * (i + 1); 
+		threads.emplace_back (threadCalculateString, ref(arr), size, start, end, boost::ref(bar)); 	
+ 	} 
+
+ 	if (size % MAX_THREAD - 1 != 0)
+ 	{
+ 		double m;
+ 		int start = temp * (MAX_THREAD - 1); 
+ 		int end = size; 
+ 		for (int k = 1; k < size; ++k)
+		{		
+			for (int j = k; j < end; ++j)
+			{
+				if ((j >= start) && (j < end))
+				{	
+					m = arr[j][k - 1] / arr[k - 1][k - 1];
+ 					for (int i = 0; i < size + 1; ++i) {
+ 						  arr[j][i] = arr[j][i] - m * arr[k - 1][i];
+ 					}
+				}
+			}
+			bar.wait();
+		}	
  	}
 
- 	/*try {
-        for (int i = 0; i < size - 1; ++i) threads[i].join();
-    } catch(const std::system_error& e) {
-        std::cout << "Caught system_error with code in thread " << e.code() 
-                  << " meaning " << e.what() << '\n';
-    }*/
-
-    // обратный ход - подставляем и считаем
+ 	for (auto& thread : threads) {
+    	if (thread.joinable()){
+      		thread.join();
+      	}
+    } 
+    	
+	//threads.clear();
+ 	//printArr(arr, size);
+	
+ 	// обратный ход - подставляем и считаем
+ 	double *x = new double[size];
  	for (int i = size - 1; i >= 0; i--) {
- 		for (int j = i + 1; j < size; j++) x[i] -= arr[i][j] * x[j];
- 		x[i] = x[i] / arr[i][i];
+ 		x[i] = arr[i][size];
+ 		for (int j = i + 1; j < size; j++) 
+ 			x[i] -= arr[i][j] * x[j];
+ 		x[i] =x[i] / arr[i][i];
  	}
-
-    unsigned int end_time = clock();
-
+	
+    
 	vector<double> _answers;	
-	for (int i = 0; i < size; ++i) _answers.push_back(x[i]); 
+	
+	for (int i = 0; i < size; ++i) 
+		_answers.push_back(x[i]); 
 
-    unsigned int search_time = end_time - start_time; 
+	double end_time = clock() / (CLOCKS_PER_SEC / 100);
+    double search_time = end_time - start_time; 
     cout << "Время = " << search_time << "мс." << endl; 
+
+    for (int i = 0; i < size; ++i)
+    	delete[] arr[i]; 
+    delete[] arr; 
+    delete[] x;
 
 	return _answers;  
 }
 
-class inputUnsInt
-{
-public:
-	inputUnsInt();
-	~inputUnsInt();
-	
-	static int inputUnsIntCheck () {
-	unsigned int size = 0;
-	std::ios::iostate state;
-    do {
-		int temp; 
-        std::cout << "Введите колличество коэфициентов: " << std::endl;
-        std::cin >> temp;
-        if (temp >= 0) {
-			state = std::cin.rdstate();
-			if (state != std::ios::goodbit) {
-				std::cout << "Ошибка" << std::endl;
-				std::cin.clear(std::ios::goodbit);
-				std::cin.ignore(65535, '\n');
-			}
-		} else {
-			std::cout << "Ошибка" << std::endl;
-			std::cin.clear(std::ios::goodbit);
-			std::cin.ignore(65535, '\n');
-		}
-		size = temp;
-	} while (state != std::ios::goodbit);
-    std::cout << "Вы ввели: " << size << endl;
-    return (int) size; 
-	};	
-};
+bool is_equalDouble(double x, double y) {
+    return std::fabs(x - y) < std::numeric_limits<double>::epsilon();
+}
 
 int main(int argc, char const *argv[])
 {
-	//int _size = inputUnsInt::inputUnsIntCheck(); 
-	int _size = 200; 
+	
+bool yesOrNot = false;
+
+ //for (int i = 10; i < 1000; i += 100){
+
+ 	cout << "====================================================================" << endl; 
+	
+	int _size = 1000;	
+	  
 	_arraySlau = new double*[_size];
 	for (int i = 0; i < _size; i++) {
 		_arraySlau[i] = new double[_size + 1]; 
@@ -296,31 +239,37 @@ int main(int argc, char const *argv[])
 
 	printArr(_arraySlau, _size); 
 	cout << "Размер матрицы " << _size << " X " << _size + 1 << endl;
+	MAX_THREAD = std::thread::hardware_concurrency(); 
+	cout << "Всего доступно одновременно - " << MAX_THREAD << " потока"<< endl;   
 
 	vector<double> answer1 = getAnswers(_arraySlau, _size);
-	vector<double> answer2 = getAnswersThread(_arraySlau, _size);
-	cout << "Ответы: без threads, c threads" << endl;
-
+	vector<double> answer2 = getAnswers(_arraySlau, _size, MAX_THREAD);
+	//cout << "Ответы:|без threads | c threads" << "| Всего ответов - " << answer1.size() << endl;
 	std::vector<double>::iterator ii = answer2.begin();
 	//int idx = 0; 
-	bool yesOrNot = false; 
+	 
 	for (std::vector<double>::iterator i = answer1.begin(); i != answer1.end(); ++i, ++ii)
-	{
-		/*cout << "X" << idx + 1 << " = " << *i << "  " << *ii << endl;
-		idx++;*/
-
-		if (*i != *ii)
+	{	
+		/*if (idx < 10)
 		{
-			/*cout << "всё верно" << endl;*/
-			yesOrNot = true;  
-		} /*else cout << "Ошибка" << endl;*/ 
+			cout << setw(1) << left << "X" 
+			<< setw(2) << left << idx + 1 << " =  |" 
+			<< setw(12) << left << setprecision(3) << *i << "| "
+			<< setw(8) << left << setprecision(3) << *ii  << " |"<< endl;
+			idx++;
+		 }*/
+		if (is_equalDouble(round(*i * 100) /100, round(*ii * 100) / 100) != true){
+			yesOrNot = true; 
+		}
 	}
 
-	if (yesOrNot)
-	{	
-		cout << "Проверка не пройдена" << endl;
-		
-	} else cout << "Проверка пройдена" << endl;
+	for (int i = 0; i < _size; ++i)
+    	delete[] _arraySlau[i]; 
+    delete[] _arraySlau; 
 
+ //}	
+if (yesOrNot)
+		cout << "Проверка не пройдена" << endl;	
+	else cout << "\n   === Проверка пройдена \n"<< endl;
 	return 0;
 }
