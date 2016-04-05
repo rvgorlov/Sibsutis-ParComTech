@@ -33,11 +33,13 @@ double randDouble (double fMin, double fMax) {
 
 void printArr (double **arr, int size ) {
 	if (size < 17) { 
-		for (int i = 0; i < size + 1; ++i) cout << "========";
+		for (int i = 0; i < size + 1; ++i) 
+			cout << "========";
 	 	cout << endl; 
 		cout.setf(ios::fixed);
 		for (int i = 0; i < size; ++i)
-		{
+		{	
+			cout << i << ") "; 
 			for (int j = 0; j < size + 1; ++j)
 			{	
 				if (j == size) cout << "|"; 
@@ -91,19 +93,25 @@ vector<double> getAnswers (double **arraySlau, int size) {
  		}
  	}
 
- 	double *x = new double[size];
+ 	/*double *x = new double[size];
  	// обратный ход - подставляем и считаем
  	for (int i = size - 1; i >= 0; i--) {
  		x[i] = arr[i][size];
  		for (int j = i + 1; j < size; j++) x[i] -= arr[i][j] * x[j];
  		x[i] = x[i] / arr[i][i];
+ 	}*/
+
+ 	arr[size - 1][size] /= arr[size - 1][size - 1]; 
+ 	for (int i = size - 2; i >= 0; i--) {
+		for (int j = i + 1; j < size; j++)
+ 			arr[i][size] -= arr[i][j] * arr[j][size]; 
+ 		arr[i][size] /= arr[i][i];
  	}
-	
- 	//printArr(arr, size);
+ 	printArr(arr, size);
  	
 	vector<double> _answers;	
 	for (int i = 0; i < size; ++i) 
-		_answers.push_back(x[i]); 
+		_answers.push_back(arr[i][size]); 
 	
 	double end_time = clock() / (CLOCKS_PER_SEC / 100);
     double search_time = end_time - start_time; 
@@ -113,12 +121,12 @@ vector<double> getAnswers (double **arraySlau, int size) {
     for (int i = 0; i < size; ++i)
     	delete[] arr[i]; 
     delete[] arr; 
-    delete[] x;
+    //delete[] x;
 	
 	return _answers;  
 }
 
-void threadCalculateString (double **arr, int size, int start, int end, boost::barrier& cur_barier) {
+void threadCalculateString (double **arr, int size, int start, int end, boost::barrier& cur_barier, boost::barrier& phase1) {
 	double m;
 	for (int k = 1; k < size; ++k) {	
 		for (int j = k; j < end; ++j) {	
@@ -130,7 +138,20 @@ void threadCalculateString (double **arr, int size, int start, int end, boost::b
 		}
  		cur_barier.wait();
 	}
-}
+
+	phase1.wait(); 
+
+	for (int i = size - 2; i >= 0; i--) {
+		if ((i >= start) && (i < end)) {
+ 			for (int j = i + 1; j < size; j++)
+ 				arr[i][size] -= arr[i][j] * arr[j][size]; 
+ 			arr[i][size] /= arr[i][i];
+		}
+		cur_barier.wait();
+ 	}
+
+	
+ 	}
 
 vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
 
@@ -152,14 +173,15 @@ vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
 
  	for (int i = 0; i < (MAX_THREAD - 1); ++i) {
     	int start = temp * i, end = temp * (i + 1); 
-		threads.emplace_back (threadCalculateString, ref(arr), size, start, end, boost::ref(bar)); 	
+		threads.emplace_back (threadCalculateString, ref(arr), size, start, end, boost::ref(bar), boost::ref(phase1)); 	
  	} 
+ 	int start, end;
 
  	if (size % MAX_THREAD - 1 != 0)
  	{
  		double m;
- 		int start = temp * (MAX_THREAD - 1); 
- 		int end = size; 
+ 		start = temp * (MAX_THREAD - 1); 
+ 		end = size; 
  		for (int k = 1; k < size; ++k)
 		{		
 			for (int j = k; j < end; ++j)
@@ -174,7 +196,27 @@ vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
 			}
 			bar.wait();
 		}	
+ 	}  
+
+ 	arr[size - 1][size] /= arr[size - 1][size - 1]; 
+
+ 	phase1.wait();
+ 	
+ 	if (size % MAX_THREAD - 1 != 0)
+ 	{
+ 	start = temp * (MAX_THREAD - 1); /*cout << start << endl; */
+ 	end = size; /*cout << end << endl; */
+
+	for (int i = size - 2; i >= 0; i--) {
+		if ((i >= start) && (i < end)) {
+ 			for (int j = i + 1; j < size; j++)
+ 				arr[i][size] -= arr[i][j] * arr[j][size]; 
+ 			arr[i][size] /= arr[i][i];
+		}
+		bar.wait();
  	}
+
+ 	} 
 
  	for (auto& thread : threads) {
     	if (thread.joinable()){
@@ -183,22 +225,21 @@ vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
     } 
     	
 	//threads.clear();
- 	//printArr(arr, size);
+ 	printArr(arr, size);
 	
  	// обратный ход - подставляем и считаем
- 	double *x = new double[size];
- 	for (int i = size - 1; i >= 0; i--) {
+ 	/*for (int i = size - 1; i >= 0; i--) {
  		x[i] = arr[i][size];
  		for (int j = i + 1; j < size; j++) 
  			x[i] -= arr[i][j] * x[j];
  		x[i] =x[i] / arr[i][i];
- 	}
+ 	}*/
 	
     
 	vector<double> _answers;	
 	
 	for (int i = 0; i < size; ++i) 
-		_answers.push_back(x[i]); 
+		_answers.push_back(arr[i][size]); 
 
 	double end_time = clock() / (CLOCKS_PER_SEC / 100);
     double search_time = end_time - start_time; 
@@ -207,8 +248,6 @@ vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
     for (int i = 0; i < size; ++i)
     	delete[] arr[i]; 
     delete[] arr; 
-    delete[] x;
-
 	return _answers;  
 }
 
@@ -225,7 +264,7 @@ bool yesOrNot = false;
 
  	cout << "====================================================================" << endl; 
 	
-	int _size = 1000;	
+	int _size = 2500;	
 	  
 	_arraySlau = new double*[_size];
 	for (int i = 0; i < _size; i++) {
@@ -244,20 +283,20 @@ bool yesOrNot = false;
 
 	vector<double> answer1 = getAnswers(_arraySlau, _size);
 	vector<double> answer2 = getAnswers(_arraySlau, _size, MAX_THREAD);
-	//cout << "Ответы:|без threads | c threads" << "| Всего ответов - " << answer1.size() << endl;
+	cout << "Ответы:|без threads | c threads" << "| Всего ответов - " << answer1.size() << endl;
 	std::vector<double>::iterator ii = answer2.begin();
-	//int idx = 0; 
+	int idx = 0; 
 	 
 	for (std::vector<double>::iterator i = answer1.begin(); i != answer1.end(); ++i, ++ii)
 	{	
-		/*if (idx < 10)
+		if (idx < 16)
 		{
 			cout << setw(1) << left << "X" 
 			<< setw(2) << left << idx + 1 << " =  |" 
 			<< setw(12) << left << setprecision(3) << *i << "| "
 			<< setw(8) << left << setprecision(3) << *ii  << " |"<< endl;
 			idx++;
-		 }*/
+		 }
 		if (is_equalDouble(round(*i * 100) /100, round(*ii * 100) / 100) != true){
 			yesOrNot = true; 
 		}
