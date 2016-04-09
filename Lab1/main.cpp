@@ -12,6 +12,7 @@
 #include <boost/thread/thread.hpp>
 #include <boost/thread/barrier.hpp>
 #include <chrono>
+#include <mutex>
 
 using namespace std;
 
@@ -164,6 +165,7 @@ vector<double> getAnswers (double **arraySlau, int size, int MAX_THREAD) {
  		end = size; 
  		for (int k = 1; k < size; ++k)
 		{	
+
 			for (int j = k; j < end; ++j)
 			{
 				if ((j >= start) && (j < end))
