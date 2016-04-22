@@ -1,7 +1,7 @@
 /*
 ==============================
-Реализация потокобезопасного 
-двухсвзяного списка List
+Реализация потокобезопасной 
+двухсвзяной очереди
 ==============================
 */
 
@@ -17,117 +17,151 @@ clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 
 #include <thread>
 #include <mutex>
 #include <vector>
+#include <string>
 
 #include <boost/thread/barrier.hpp>
 
 using namespace std;
 
-template <typename T>
-class threadList
+template <class T> 
+class threadDeque
 {
-private: 
-   struct Node {
-      T x;
-      Node *Prev, *Next; 
+private:
+
+   struct Node
+   {
+      Node* Prev, *Next; 
+      T* dequeue;
+
+      Node(Node* Pr, Node* Ne, int Mx) {
+         Prev = Pr;
+         Next = Ne;
+         dequeue = new T[Mx]();
+      }
+
+      void print(int Max, int first, int last) {
+         for(int i = 0; i < Max; ++i){
+            if (i > first && i < last)
+            {
+               cout << dequeue[i] << " ";
+            }
+         }
+      cout << endl;
+      }
    };
 
-   int _structSize; 
-   Node *Head, *Tail;
    mutex changeMutex, coutMutex; 
+   int _maxSize, _realSize, _firstIdx, _lastIdx; 
+   Node *_first, *_last; 
+
+   void add_first () {        // добавляет новый узел в начало списка
+      Node* temp = new Node(nullptr, _first, _maxSize);
+      _first->Prev = temp;
+      _first = temp;
+      _firstIdx = _maxSize - 1;
+   }
+
+   void add_last () {      // добавляет новый узел в конец списка
+      Node* temp = new Node(_last, nullptr, _maxSize);
+      _last -> Next = temp;
+      _last = temp;
+      _lastIdx = 0;
+   }
+
+   void delete_first () {     // удаляет первый узел списка
+      Node* temp = _first -> Next;
+      delete _first;
+      _first = temp;
+      _first->Prev = nullptr;
+      _firstIdx = 0;
+   }
+   
+   void delete_last () {      // удаляет последний узел списка
+      Node* temp = _last -> Prev;
+      delete _last;
+      _last = temp;
+      _last->Next = nullptr;
+      _lastIdx = _maxSize - 1;
+   }
 
 public:
-   threadList():_structSize(0),Head(NULL),Tail(NULL){}; 
-   ~threadList() {
+   threadDeque() {
+      _realSize = 0;
+      _maxSize = 1000; 
+      _lastIdx = _maxSize/2;
+      _firstIdx = _maxSize/2 - 1; 
+      Node * temp = new Node(nullptr, nullptr, _maxSize);
+      _first = temp; 
+      _last = temp;
+   };
+   ~threadDeque() {};
+
+   void push_front (int temp) {
       unique_lock<mutex> lock (changeMutex);
-      while (Head) { 
-         Tail = Head->Next;
-         delete Head;
-         Head = Tail;
-      }
-}
-
-bool seachNode(T seachX) {
-   Node *temp = Head; 
-   unique_lock<mutex> lock (changeMutex);
-   if (Tail->x == seachX)
-      return true;
-
-   while (temp != Tail) {
-      if (temp->x == seachX)
-         return true; 
-      temp = temp->Next; 
+      (_last -> dequeue)[_firstIdx] = temp;
+      _firstIdx--;
+      _realSize++;
+      if (_firstIdx == -1)      // если первый дек переполнен
+         add_first();   // добавляем в начало списка новый дек
    }
-   return false; 
-}
 
-void deleteX(T deleteX) {
-   Node *temp = Head; 
-   unique_lock<mutex> lock (changeMutex);
-   if (Head != NULL)
-   {
-      while (temp != Tail) {      
-         if    (temp->x == deleteX){
-            temp->Prev->Next = temp->Next;
-            temp->Next->Prev = temp->Prev;
-            --_structSize;
-            return;
-         }          
-         temp = temp->Next; 
-      }
+   void push_back (int temp) {
+      unique_lock<mutex> lock (changeMutex);
+      (_last -> dequeue)[_lastIdx] = temp;
+      _lastIdx++;
+      _realSize++;
+      if (_lastIdx == _maxSize)     // если последний дек переполнен
+         add_last();    // добавляем в конец списка новый дек
+   }
 
-      if (Tail->x == deleteX) {
-         temp = Tail; 
+   T pop_front () {
+      unique_lock<mutex> lock (changeMutex);
+      _realSize--;
+      if (_firstIdx == _maxSize - 1)
+         delete_first();
+      else
+         _firstIdx++;
+      return (_last->dequeue)[_firstIdx];
+   }
+   
+   T pop_back () {
+      unique_lock<mutex> lock (changeMutex);
+      _realSize--;
+      if (_lastIdx == 0)
+         delete_last();
+      else
+         _lastIdx--;
+      return ( _last->dequeue )[_lastIdx];
+   }
 
-         Tail = temp->Prev; 
-         temp->Prev->Next = NULL; 
-         --_structSize;
+   bool empty() { return (_realSize == 0); }
+   int size() { return _realSize; }
+
+   void clear() {
+      unique_lock<mutex> lock (changeMutex);
+      Node* temp = _last;
+      while (temp) {
+         Node* M = temp->Next;
+         delete temp->Prev;
          delete temp;
-         return;
+         temp = M;
+      }
+      temp = new Node(nullptr, nullptr, _maxSize);
+      _last = temp;
+      _last = temp;
+      _realSize = 0;
+      _firstIdx = _maxSize / 2 - 1;
+      _lastIdx = _maxSize / 2;
+   }
+
+   void print() {
+      unique_lock<mutex> lock (coutMutex);
+      Node* temp = _last;
+      while (temp) {
+         temp->print(_maxSize, _firstIdx, _lastIdx);
+         temp = temp->Next;
       }
    }
-   
-}
-
-void Add(T x) {
-   unique_lock<mutex> lock (changeMutex);
-   ++_structSize; 
-   Node *temp = new Node;
-   temp->Next = NULL;
-   temp->x = x;
-   
-   if (Head!=NULL)
-   {
-       temp->Prev = Tail;
-       Tail->Next = temp;
-       Tail = temp;
-   }
-   else {
-      temp->Prev = NULL;
-      Head = Tail = temp;
-   }
-}
-
-void Show() {
-   Node *temp = Head;
-   int idx = 0;  
-   unique_lock<mutex> lock (changeMutex);
-   while (temp != NULL) {
-      ++idx;
-      if (idx == _structSize)
-         cout << temp->x;
-      else {
-         cout << temp->x << " -> ";
-         if (idx % 5 == 0)
-               cout << endl;
-      }
-      temp = temp->Next; 
-   }
-   cout << endl;
-}
-
-T getSize() { return _structSize; }
-T getLast() { return Tail->x; }
-T getHead() { return Head->x; } 
 
 };
 
@@ -135,32 +169,10 @@ double randDouble (double fMin, double fMax) {
    return fMin + (double)rand() / RAND_MAX * (fMax - fMin);
 }
 
-void threadWork (threadList<double> &lst1, boost::barrier& startBarrier, mutex &coutMutex, int variable) {
+void threadWork (threadDeque<double> &dequeue, boost::barrier& startBarrier, mutex &coutMutex) {
    startBarrier.wait();
    auto start_t = std::chrono::high_resolution_clock::now();
 
-
-/*switch (variable) {
-      case 0:
-         lst1.deleteX(20);  
-         break;
-      case 2:
-         lst1.Add(999);
-         break;
-      case 3:
-         lst1.seachNode(999);
-         break;
-      default:
-      break;
-}*/
-   //cout << variable << endl; 
-
-   for (int i = 0; i < 1000000; ++i)
-   {
-      lst1.Add(variable);
-      lst1.seachNode(variable);
-      lst1.deleteX(variable);
-   }
    
    auto end_t = std::chrono::high_resolution_clock::now();
    auto time = std::chrono::duration<double, std::milli>(end_t-start_t).count();
@@ -169,21 +181,33 @@ void threadWork (threadList<double> &lst1, boost::barrier& startBarrier, mutex &
 
 int main(int argc, char const *argv[]){
 
-   threadList<double> lst;
+   threadDeque<double> *dequeue = new threadDeque<double>();
+
+   if (!dequeue->empty())
+         cout << "Очередь содержит" << dequeue->size() << "элементов" << endl;
+   else cout << "Очередь пуста" << endl; 
+
+   for (int i = 0; i < 10; ++i)
+   {
+      dequeue->push_back(randDouble(0.0, 1000.0));
+      dequeue->push_front(randDouble(0.0, 1000.0));
+      //cout << dequeue.pop_back() << " ";
+      //cout << dequeue.pop_front() << endl; 
+   }
+   dequeue->print();
+   //dequeue.clear();
+
+   if (!dequeue->empty())
+         cout << "Очередь содержит " << dequeue->size() << " элементов" << endl;
+   else cout << "Очередь пуста" << endl; 
+
    vector<thread> threads;
 
    int MAX_THREAD = std::thread::hardware_concurrency();
-   boost::barrier startBarrier(MAX_THREAD);
-   mutex coutMutex; 
+   boost::barrier startBarrier(MAX_THREAD);  
 
-   for (int i = 0; i < 33; ++i) 
-      lst.Add(randDouble(0.0, 1000.0));   
-   //lst.Add(20.00);
-   //lst.Add(999);
-
-   int variable = rand()%3; 
-   for (int i = 0; i < MAX_THREAD; ++i) { 
-      threads.emplace_back (threadWork, ref(lst), ref(startBarrier), ref(coutMutex), variable);    
+   for (int i = 0; i < MAX_THREAD - 1; ++i) { 
+      threads.emplace_back (threadWork, ref(dequeue), ref(startBarrier));    
    } 
 
    for (auto& thread : threads) {
@@ -191,21 +215,6 @@ int main(int argc, char const *argv[]){
             thread.join();
          }
    }
-
-   /*for (int i = 0; i < 33; ++i) 
-      lst.Add(randDouble(0.0, 1000.0));   
-   lst.Add(20.00);*/
-
-   /*cout << lst.getSize() << endl; 
-   cout << lst.getHead() << endl;
-   cout << lst.getLast() << endl;*/
-
-   /*lst.deleteX(20);*/
-
-   if (lst.seachNode(20)) cout << "Искомый элемент найден" << endl;
-   else cout << "Искомый элемент не найден" << endl;
-
-   lst.Show();
    
 	return 0;
 }

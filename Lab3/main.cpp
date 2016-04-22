@@ -29,6 +29,8 @@ double randDouble (double fMin, double fMax) {
 
 int main(int argc, char const *argv[])
 {
+	vector<thread> threads;
+	
 	
 	return 0;
 }

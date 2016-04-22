@@ -226,7 +226,7 @@ bool is_equalDouble(double x, double y) {
 int main(int argc, char const *argv[]){
 	
 	bool yesOrNot = false;	
-	int _size = 500;					// Размер матрицы size*size. 
+	int _size = 15;					// Размер матрицы size*size. 
 	_arraySlau = new double*[_size];
 	
 	for (int i = 0; i < _size; i++) {
