@@ -169,14 +169,22 @@ double randDouble (double fMin, double fMax) {
    return fMin + (double)rand() / RAND_MAX * (fMax - fMin);
 }
 
-void threadWork (threadDeque<double> &dequeue, boost::barrier& startBarrier, mutex &coutMutex) {
-   startBarrier.wait();
+void threadWork (threadDeque<double> *dequeue, boost::barrier& startBarrier, mutex &coutMutex) {
+   //startBarrier.wait();
    auto start_t = std::chrono::high_resolution_clock::now();
 
+   for (int i = 0; i < 10; ++i)
+   {
+      dequeue->push_back(randDouble(0.0, 1000.0));
+      dequeue->push_front(randDouble(0.0, 1000.0));   
+   }
+   unique_lock<mutex> lck(coutMutex);
+   cout << dequeue->pop_back() << " ";
+   cout << dequeue->pop_front() << endl; 
    
    auto end_t = std::chrono::high_resolution_clock::now();
    auto time = std::chrono::duration<double, std::milli>(end_t-start_t).count();
-   unique_lock<mutex> lck(coutMutex); cout << "Время = " << time << "мс." << endl; 
+   cout << "Время = " << time << "мс." << endl;
 }
 
 int main(int argc, char const *argv[]){
@@ -205,9 +213,10 @@ int main(int argc, char const *argv[]){
 
    int MAX_THREAD = std::thread::hardware_concurrency();
    boost::barrier startBarrier(MAX_THREAD);  
+   mutex coutMutex; 
 
    for (int i = 0; i < MAX_THREAD - 1; ++i) { 
-      threads.emplace_back (threadWork, ref(dequeue), ref(startBarrier));    
+      threads.emplace_back (threadWork, ref(dequeue), ref(startBarrier), ref(coutMutex));    
    } 
 
    for (auto& thread : threads) {
@@ -215,6 +224,10 @@ int main(int argc, char const *argv[]){
             thread.join();
          }
    }
+
+   if (!dequeue->empty())
+         cout << "Очередь содержит " << dequeue->size() << " элементов" << endl;
+   else cout << "Очередь пуста" << endl; 
    
 	return 0;
 }
