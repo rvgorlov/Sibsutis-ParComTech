@@ -181,7 +181,7 @@ void threadWork (threadDeque<double> *dequeue, boost::barrier& startBarrier, mut
    unique_lock<mutex> lck(coutMutex);
    cout << dequeue->pop_back() << " ";
    cout << dequeue->pop_front() << endl; 
-   
+      
    auto end_t = std::chrono::high_resolution_clock::now();
    auto time = std::chrono::duration<double, std::milli>(end_t-start_t).count();
    cout << "Время = " << time << "мс." << endl;
@@ -191,17 +191,18 @@ int main(int argc, char const *argv[]){
 
    threadDeque<double> *dequeue = new threadDeque<double>();
 
+   cout << "Инициализация очереди" << endl;
    if (!dequeue->empty())
          cout << "Очередь содержит" << dequeue->size() << "элементов" << endl;
    else cout << "Очередь пуста" << endl; 
 
-   for (int i = 0; i < 10; ++i)
-   {
+   cout << "Добавляем 20 элементов" << endl;
+   for (int i = 0; i < 10; ++i) {
       dequeue->push_back(randDouble(0.0, 1000.0));
       dequeue->push_front(randDouble(0.0, 1000.0));
-      //cout << dequeue.pop_back() << " ";
-      //cout << dequeue.pop_front() << endl; 
    }
+   
+   cout << "Выводим очередь" << endl; 
    dequeue->print();
    //dequeue.clear();
 
@@ -214,7 +215,7 @@ int main(int argc, char const *argv[]){
    int MAX_THREAD = std::thread::hardware_concurrency();
    boost::barrier startBarrier(MAX_THREAD);  
    mutex coutMutex; 
-
+   cout << "Создаём " << MAX_THREAD - 1 << " потока(ов)" << endl; 
    for (int i = 0; i < MAX_THREAD - 1; ++i) { 
       threads.emplace_back (threadWork, ref(dequeue), ref(startBarrier), ref(coutMutex));    
    } 
@@ -224,7 +225,7 @@ int main(int argc, char const *argv[]){
             thread.join();
          }
    }
-
+   dequeue->print();
    if (!dequeue->empty())
          cout << "Очередь содержит " << dequeue->size() << " элементов" << endl;
    else cout << "Очередь пуста" << endl; 
