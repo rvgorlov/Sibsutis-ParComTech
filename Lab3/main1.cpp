@@ -8,7 +8,7 @@
 
 /*
 Для отладки: 
-clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main.cpp; ./main
+clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main1.cpp; ./main
 Для отладки в потоках: 
 clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main1.cpp; valgrind --tool=helgrind --history-level=approx ./main
 */
