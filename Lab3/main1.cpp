@@ -10,7 +10,7 @@
 Для отладки: 
 clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main.cpp; ./main
 Для отладки в потоках: 
-clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main.cpp; valgrind --tool=helgrind --history-level=approx ./main
+clear; g++ -pthread -Wl,--no-as-needed -lboost_system -lboost_thread -std=c++11 -Wall -o main main1.cpp; valgrind --tool=helgrind --history-level=approx ./main
 */
 
 #include <vector>
@@ -23,19 +23,17 @@ using namespace std;
 template<typename FuncVec>
 int handle(const vector<int>& v, FuncVec f,  int MAX_THREAD)
 {
-    vector<future<int>> threads;
+    std::vector<future<int>> threads;
     std::vector<int> answers;
     int mid = v.size() / MAX_THREAD; 
     int start = 0, end = start + mid; 
     for (int i = 0; i < MAX_THREAD; ++i)
     {  
         start = mid * i;
-        end = start + mid;   
-        threads.emplace_back (async (f, v, start, end));     
-    }
-    if (v.size() % MAX_THREAD != 0) 
-    {
-        answers.push_back(f(v, end, v.size())); 
+        end = start + mid;
+        if (end != (int) v.size() && (int) v.size() - end < mid)
+            end = v.size();   
+        threads.emplace_back (std::async(std::launch::async, f, v, start, end));     
     }
     for (auto& thread : threads) {
         answers.push_back(thread.get());
@@ -76,10 +74,10 @@ int maxFunc(int v1, int v2) { return (v1>v2) ? v1 : v2; }
 
 int main(int argc, const char * argv[])
 {
-    int Num = 1000021; 
+    int Num = 10000211; 
 
     cout << "Создаём " << Num << " элементов." << endl;
-    vector<int> v;
+    vector<int> v(Num);
     for(int i = 0; i < Num; ++i)
         v.push_back(rand() % 10);
 
