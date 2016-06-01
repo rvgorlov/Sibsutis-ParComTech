@@ -19,7 +19,6 @@ using namespace std;
 double **_arraySlau;
 int _size, MAX_THREAD;
 
-
 double randDouble (double fMin, double fMax) {	
  	return fMin + (double)rand() / RAND_MAX * (fMax - fMin);
 }
